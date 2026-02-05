@@ -1,0 +1,17 @@
+# python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+.env
+
+# artifacts
+data/raw/
+data/processed/
+models/
+reports/figures/
+
+# os
+.DS_Store
