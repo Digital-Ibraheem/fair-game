@@ -68,7 +68,7 @@ Run the pipeline in order:
 # 1. Verify API credentials
 python src/smoke_test.py
 
-# 2. Fetch data (~38 min for 380 matches at 10 req/min)
+# 2. Fetch data (~38 min for 380 matches at 10 req/min, because of the free plan limits)
 python src/fetch_api.py
 
 # 3. Build match-level dataset
