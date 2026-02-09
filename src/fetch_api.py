@@ -4,6 +4,7 @@ import os
 import sys
 import time
 import json
+import argparse
 from pathlib import Path
 from dotenv import load_dotenv
 import requests
@@ -16,16 +17,16 @@ from fair_game.config import (
     RAW_DATA_DIR, PROCESSED_DATA_DIR
 )
 
-def fetch_fixtures(api_key, api_host):
-    """Fetch all fixtures for the configured league and season."""
+def fetch_fixtures(api_key, api_host, league_id, season):
+    """Fetch all fixtures for the specified league and season."""
     url = f"https://{api_host}/fixtures"
     headers = {'x-apisports-key': api_key}
     params = {
-        'league': LEAGUE_ID,
-        'season': SEASON
+        'league': league_id,
+        'season': season
     }
 
-    print(f"Fetching fixtures for league {LEAGUE_ID}, season {SEASON}...")
+    print(f"Fetching fixtures for league {league_id}, season {season}...")
     response = requests.get(url, headers=headers, params=params)
     response.raise_for_status()
 
@@ -40,7 +41,7 @@ def fetch_fixtures(api_key, api_host):
 
     # Save raw response
     Path(RAW_DATA_DIR).mkdir(parents=True, exist_ok=True)
-    output_file = f"{RAW_DATA_DIR}/fixtures_{LEAGUE_ID}_{SEASON}.json"
+    output_file = f"{RAW_DATA_DIR}/fixtures_{league_id}_{season}.json"
     with open(output_file, 'w') as f:
         json.dump(data, f, indent=2)
     print(f"Saved raw fixtures to {output_file}")
@@ -123,12 +124,39 @@ def process_fixture_stats(fixture_data, stats_data):
                 'red_cards': extract_stat_value(statistics, 'Red Cards'),
                 'offsides': extract_stat_value(statistics, 'Offsides'),
                 'corners': extract_stat_value(statistics, 'Corner Kicks'),
+                # New stats for enhanced models
+                'expected_goals': extract_stat_value(statistics, 'expected_goals'),
+                'shots_insidebox': extract_stat_value(statistics, 'Shots insidebox'),
+                'blocked_shots': extract_stat_value(statistics, 'Blocked Shots'),
+                'goalkeeper_saves': extract_stat_value(statistics, 'Goalkeeper Saves'),
             }
             rows.append(row)
 
     return rows
 
+def parse_args():
+    """Parse command-line arguments."""
+    parser = argparse.ArgumentParser(
+        description='Fetch soccer match data from API-Football'
+    )
+    parser.add_argument(
+        '--league', type=int, default=None,
+        help=f'League ID (default: {LEAGUE_ID} from config)'
+    )
+    parser.add_argument(
+        '--season', type=int, default=None,
+        help=f'Season year (default: {SEASON} from config)'
+    )
+    return parser.parse_args()
+
+
 def main():
+    args = parse_args()
+
+    # Use CLI args if provided, otherwise fall back to config
+    league_id = args.league if args.league is not None else LEAGUE_ID
+    season = args.season if args.season is not None else SEASON
+
     # Load environment variables
     load_dotenv()
 
@@ -140,7 +168,7 @@ def main():
         sys.exit(1)
 
     # Fetch fixtures
-    fixtures = fetch_fixtures(api_key, api_host)
+    fixtures = fetch_fixtures(api_key, api_host, league_id, season)
 
     # Filter to only finished fixtures
     finished_fixtures = [f for f in fixtures if f['fixture']['status']['short'] == 'FT']

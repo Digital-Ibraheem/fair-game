@@ -68,6 +68,11 @@ def main():
         'red_cards': 'home_red_cards',
         'offsides': 'home_offsides',
         'corners': 'home_corners',
+        # New stats for enhanced models
+        'expected_goals': 'home_xg',
+        'shots_insidebox': 'home_shots_insidebox',
+        'blocked_shots': 'home_blocked_shots',
+        'goalkeeper_saves': 'home_goalkeeper_saves',
     })
 
     # Rename columns for away team
@@ -85,6 +90,11 @@ def main():
         'red_cards': 'away_red_cards',
         'offsides': 'away_offsides',
         'corners': 'away_corners',
+        # New stats for enhanced models
+        'expected_goals': 'away_xg',
+        'shots_insidebox': 'away_shots_insidebox',
+        'blocked_shots': 'away_blocked_shots',
+        'goalkeeper_saves': 'away_goalkeeper_saves',
     })
 
     # Keep only relevant columns
@@ -92,13 +102,19 @@ def main():
                  'home_team_id', 'home_team_name', 'home_goals',
                  'home_shots_total', 'home_shots_on_target', 'home_possession',
                  'home_passes_total', 'home_passes_accurate', 'home_fouls',
-                 'home_yellow_cards', 'home_red_cards', 'home_offsides', 'home_corners']
+                 'home_yellow_cards', 'home_red_cards', 'home_offsides', 'home_corners',
+                 'home_xg', 'home_shots_insidebox', 'home_blocked_shots', 'home_goalkeeper_saves']
 
     away_cols = ['fixture_id',
                  'away_team_id', 'away_team_name', 'away_goals',
                  'away_shots_total', 'away_shots_on_target', 'away_possession',
                  'away_passes_total', 'away_passes_accurate', 'away_fouls',
-                 'away_yellow_cards', 'away_red_cards', 'away_offsides', 'away_corners']
+                 'away_yellow_cards', 'away_red_cards', 'away_offsides', 'away_corners',
+                 'away_xg', 'away_shots_insidebox', 'away_blocked_shots', 'away_goalkeeper_saves']
+
+    # Filter to columns that exist (backwards compatibility with old data)
+    home_cols = [c for c in home_cols if c in home_df.columns]
+    away_cols = [c for c in away_cols if c in away_df.columns]
 
     home_df = home_df[home_cols]
     away_df = away_df[away_cols]
@@ -120,13 +136,39 @@ def main():
         'home_goals', 'home_shots_total', 'home_shots_on_target',
         'home_passes_total', 'home_passes_accurate', 'home_fouls',
         'home_yellow_cards', 'home_red_cards', 'home_offsides', 'home_corners',
+        'home_xg', 'home_shots_insidebox', 'home_blocked_shots', 'home_goalkeeper_saves',
         'away_goals', 'away_shots_total', 'away_shots_on_target',
         'away_passes_total', 'away_passes_accurate', 'away_fouls',
-        'away_yellow_cards', 'away_red_cards', 'away_offsides', 'away_corners'
+        'away_yellow_cards', 'away_red_cards', 'away_offsides', 'away_corners',
+        'away_xg', 'away_shots_insidebox', 'away_blocked_shots', 'away_goalkeeper_saves'
     ]
 
     for col in numeric_cols:
-        match_df[col] = match_df[col].apply(clean_numeric)
+        if col in match_df.columns:
+            match_df[col] = match_df[col].apply(clean_numeric)
+
+    # Compute derived features
+    print("Computing derived features...")
+
+    # Shot efficiency: shots_on_target / shots_total
+    match_df['home_shot_efficiency'] = match_df.apply(
+        lambda r: r['home_shots_on_target'] / r['home_shots_total']
+        if r['home_shots_total'] > 0 else 0, axis=1
+    )
+    match_df['away_shot_efficiency'] = match_df.apply(
+        lambda r: r['away_shots_on_target'] / r['away_shots_total']
+        if r['away_shots_total'] > 0 else 0, axis=1
+    )
+
+    # Pass accuracy: passes_accurate / passes_total
+    match_df['home_pass_accuracy'] = match_df.apply(
+        lambda r: (r['home_passes_accurate'] / r['home_passes_total'] * 100)
+        if r['home_passes_total'] > 0 else 0, axis=1
+    )
+    match_df['away_pass_accuracy'] = match_df.apply(
+        lambda r: (r['away_passes_accurate'] / r['away_passes_total'] * 100)
+        if r['away_passes_total'] > 0 else 0, axis=1
+    )
 
     # Save match dataset
     output_file = f"{PROCESSED_DATA_DIR}/match_dataset.csv"
