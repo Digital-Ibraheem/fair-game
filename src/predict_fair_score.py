@@ -77,7 +77,7 @@ def main():
     output_df['fair_score'] = output_df['fair_home_goals'].astype(str) + '-' + output_df['fair_away_goals'].astype(str)
     output_df['actual_goal_diff'] = output_df['actual_home_goals'] - output_df['actual_away_goals']
     output_df['fair_goal_diff'] = output_df['fair_home_goals'] - output_df['fair_away_goals']
-    output_df['goal_diff_error'] = output_df['fair_goal_diff'] - output_df['actual_goal_diff']
+    output_df['goal_diff_error'] = abs(output_df['fair_goal_diff'] - output_df['actual_goal_diff'])
 
     # Save to CSV
     output_file = f"{PROCESSED_DATA_DIR}/fair_scores.csv"
@@ -111,8 +111,17 @@ def main():
     ]
     print(mismatches.to_string(index=False))
 
-    # Calculate team-level luck
+    # Calculate team-level luck based on result flips
     print(f"\n=== Team Luck Analysis ===")
+
+    def classify_result(goal_diff):
+        """Classify result as W/D/L based on goal difference."""
+        if goal_diff > 0:
+            return 'W'
+        elif goal_diff < 0:
+            return 'L'
+        else:
+            return 'D'
 
     # Create rows for each team's home matches
     home_luck = output_df[['home_team_name', 'actual_goal_diff', 'fair_goal_diff']].copy()
@@ -127,25 +136,47 @@ def main():
     # Combine home and away
     team_luck = pd.concat([home_luck, away_luck], ignore_index=True)
 
-    # Calculate luck: positive = got better results than deserved (lucky)
-    team_luck['luck'] = team_luck['actual_diff'] - team_luck['fair_diff']
+    # Classify results
+    team_luck['actual_result'] = team_luck['actual_diff'].apply(classify_result)
+    team_luck['fair_result'] = team_luck['fair_diff'].apply(classify_result)
+
+    # Calculate luck metrics
+    team_luck['lucky_win'] = ((team_luck['actual_result'] == 'W') &
+                              (team_luck['fair_result'].isin(['D', 'L']))).astype(int)
+    team_luck['unlucky_loss'] = ((team_luck['actual_result'] == 'L') &
+                                 (team_luck['fair_result'].isin(['D', 'W']))).astype(int)
+    team_luck['lucky_draw'] = ((team_luck['actual_result'] == 'D') &
+                               (team_luck['fair_result'] == 'L')).astype(int)
+    team_luck['unlucky_draw'] = ((team_luck['actual_result'] == 'D') &
+                                 (team_luck['fair_result'] == 'W')).astype(int)
 
     # Aggregate by team
     team_stats = team_luck.groupby('team').agg({
-        'luck': ['mean', 'sum', 'count']
-    }).round(2)
-    team_stats.columns = ['avg_luck', 'total_luck', 'matches']
-    team_stats = team_stats.reset_index()
-    team_stats = team_stats.sort_values('avg_luck', ascending=False)
+        'actual_result': 'count',  # total matches
+        'lucky_win': 'sum',
+        'unlucky_loss': 'sum',
+        'lucky_draw': 'sum',
+        'unlucky_draw': 'sum'
+    }).reset_index()
+
+    team_stats.columns = ['team', 'matches', 'lucky_wins', 'unlucky_losses', 'lucky_draws', 'unlucky_draws']
+
+    # Calculate net luck and luck rate
+    team_stats['net_lucky_results'] = (team_stats['lucky_wins'] + team_stats['lucky_draws'] -
+                                       team_stats['unlucky_losses'] - team_stats['unlucky_draws'])
+    team_stats['luck_rate'] = (team_stats['net_lucky_results'] / team_stats['matches'] * 100).round(1)
+
+    # Sort by net lucky results
+    team_stats = team_stats.sort_values('net_lucky_results', ascending=False)
 
     # Show luckiest teams
-    print(f"\nLuckiest Teams (actual results better than fair results):")
-    luckiest = team_stats.head(5)
+    print(f"\nLuckiest Teams (won matches they should have lost/drawn):")
+    luckiest = team_stats.head(5)[['team', 'matches', 'lucky_wins', 'unlucky_losses', 'net_lucky_results', 'luck_rate']]
     print(luckiest.to_string(index=False))
 
     # Show unluckiest teams
-    print(f"\nUnluckiest Teams (actual results worse than fair results):")
-    unluckiest = team_stats.tail(5).sort_values('avg_luck')
+    print(f"\nUnluckiest Teams (lost matches they should have won/drawn):")
+    unluckiest = team_stats.tail(5).sort_values('net_lucky_results')[['team', 'matches', 'lucky_wins', 'unlucky_losses', 'net_lucky_results', 'luck_rate']]
     print(unluckiest.to_string(index=False))
 
     # Save team luck analysis
